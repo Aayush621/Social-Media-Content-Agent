@@ -2,7 +2,8 @@
 
 A powerful AI-powered application that generates optimized content for multiple social media platforms simultaneously. The system uses advanced language models to create platform-specific content while maintaining brand consistency and generating complementary images.
 
-![WhatsApp Image 2024-12-06 at 22 03 44](https://github.com/user-attachments/assets/19a57700-48ce-44f6-91a8-69dff392e150)
+![WhatsApp Image 2024-12-06 at 22 03 44](https://github.com/user-attachments/assets/c1acfd73-33a9-4ee3-bb5d-831574225954)
+
 
 ## Features ✨
 
@@ -14,31 +15,35 @@ A powerful AI-powered application that generates optimized content for multiple 
 
 - **Smart Content Generation** 🤖
 
-![WhatsApp Image 2024-12-06 at 22 03 04](https://github.com/user-attachments/assets/2988ecf3-6d6c-4dcf-88db-66a6a9819653)
+![WhatsApp Image 2024-12-06 at 22 03 04](https://github.com/user-attachments/assets/4d50b7a4-9ba4-4d61-bdea-3ad8b497aba2)
+
 
   - Platform-specific formatting and tone
   - Hashtag suggestions
   - Call-to-action (CTA) recommendations
   - SEO optimization for blog posts
 
-![WhatsApp Image 2024-12-06 at 22 02 32](https://github.com/user-attachments/assets/6ed4a6ae-1ad7-427f-866f-3509b1319120)
+![WhatsApp Image 2024-12-06 at 22 02 32](https://github.com/user-attachments/assets/6d82c734-38b6-474c-876e-e632d248fc0e)
+
 
 - **Image Generation** 🎨
 
-![WhatsApp Image 2024-12-06 at 22 01 42](https://github.com/user-attachments/assets/c0d9851c-1a08-4557-a829-b402d6896a4e)
+![WhatsApp Image 2024-12-06 at 22 01 42](https://github.com/user-attachments/assets/4340d374-975e-4ce0-97cd-06edb7e56908)
+
 
   - AI-powered image creation
   - Platform-optimized visuals
   - Downloadable high-quality images
 
-![WhatsApp Image 2024-12-06 at 22 01 07](https://github.com/user-attachments/assets/dacc061d-a9af-4a34-a949-fda5cd299e92)
+![WhatsApp Image 2024-12-06 at 22 01 07](https://github.com/user-attachments/assets/bb50823d-52f4-46fc-965a-9beb392d42c2)
+
 
 - **Brand Consistency** 🎯
   - Maintains brand voice across platforms
   - Customizable tone and style
   - Target audience consideration
 
-![WhatsApp Image 2024-12-06 at 22 00 23](https://github.com/user-attachments/assets/bbaf8afa-18d6-48ca-adc3-3e33a473eed7)
+![WhatsApp Image 2024-12-06 at 22 00 23](https://github.com/user-attachments/assets/60aed1e9-21b4-4cfd-9a70-9c190699817f)
 
 ## Prerequisites 📋
 
@@ -96,7 +101,7 @@ python -m http.server 5500
 
 ## Project Structure 📁
 
-![content_generation_graph](https://github.com/user-attachments/assets/4db68848-24b9-4d8a-8e17-51f489e0a62c)
+![content_generation_graph](https://github.com/user-attachments/assets/64b9c98b-542b-45e7-a6e4-e080c6057942)
 
 
 ```
