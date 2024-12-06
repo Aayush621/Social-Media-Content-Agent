@@ -2,7 +2,7 @@ from typing_extensions import TypedDict, List, Literal
 from pydantic import BaseModel, Field
 from langgraph.graph.message import MessagesState
 import operator
-from typing import Annotated, List, Dict
+from typing import Annotated, List, Dict, Optional
 from pydantic import BaseModel, Field
 from langchain.prompts import ChatPromptTemplate
 from langgraph.prebuilt import create_react_agent
@@ -16,6 +16,12 @@ from langgraph.graph import StateGraph, START, END
 from dotenv import load_dotenv
 import re
 import os
+from langchain_core.output_parsers import JsonOutputParser
+import io
+import base64
+from prompts import image_prompt_template
+from huggingface_hub import InferenceClient
+from PIL import Image  # Make sure this import is at the top
 
 load_dotenv()
 
@@ -31,51 +37,13 @@ _set_env("GOOGLE_API_KEY")
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-1.5-flash",
-    temperature=0,
+    temperature=0.5,
     max_tokens=None,
     timeout=30,
     max_retries=5,
     retry_wait_time=2
     # other params...
 )
-user_details = {
-  "user_name": "CalveinKlein Design Team",
-  "business_name": "Calvein Klein",
-  "industry": "Fashion",
-  "business_type": "Clothing Startup",
-  "target_audience": ["Young People", "Fashion Enthusiasts", "GenZ Kids"],
-  "tone": "Aesthetic",
-  "objectives": ["Awareness", "Marketing"],
-  "platforms": ["LinkedIn", "Twitter", "Instagram"],
-  "preferred_platforms": ["Instagram", "Twitter"],
-  "platform_specific_details": {
-    "instagram_handle": "@ck_design",
-    "twitter_handle": "@CalveinKlein",
-    "linkedin_page": "linkedin.com/company/Ck",
-    "medium_page": "medium.com/ck"
-  },
-  "campaigns": [
-    {
-      "title": "Get you desired clothes",
-      "date": "2024-05-20",
-      "platform": "Instagram",
-      "success_metric": "1000+ Shares"
-    }
-  ],
-  "popular_hashtags": ["#TrendingClothes", "#Fashion", "#Fashionverse"],
-  "themes": ["Fashion", "Trending Clothes"],
-  "short_length": 280,
-  "long_length": 2000,
-  "assets_link": "https://drive.google.com/drive/folders/langgraph-assets",
-  "colors": ["#1E88E5", "#FFC107"],
-  "brand_keywords": ["Innovative", "Efficient"],
-  "restricted_keywords": ["Buggy", "Outdated"],
-  "competitors": ["HnM", "Levi's"],
-  "competitor_metrics": ["Content Shares", "Follower Growth"],
-  "posting_schedule": ["Tuesday 10 AM", "Friday 3 PM"],
-  "formats": ["Carousel", "Quote"],
-  "personal_preferences": "Use technical terms but keep explanations concise."
-}
 
 Platform = Literal["Twitter", "LinkedIn", "Instagram", "Blog"]
 
@@ -111,9 +79,94 @@ class FinalState(TypedDict):
 class GeneratedContent(TypedDict):
     generated_content: str
 
+class ImageGenerationState(TypedDict):
+    generated_content: str
+    image_prompt: str
+    image_base64: str  # Changed from image_path
+
 summ_model = llm
 
 model = llm
+
+# Define the image model using InferenceClient
+image_model = InferenceClient(
+    "black-forest-labs/FLUX.1-dev", 
+    token=os.getenv("HUGGINGFACE_TOKEN")
+)
+
+def extract_user_details(query: str) -> dict:
+    extract_prompt = ChatPromptTemplate.from_template("""
+    Analyze the following text and extract business/brand details to create a structured user profile.
+    If certain information is not available, make reasonable assumptions based on the context.
+
+    Text: {query}
+
+    Generate a JSON response with the following structure:
+    {{
+        "user_name": "Brand/Team name",
+        "business_name": "Brand name",
+        "industry": "Main industry",
+        "business_type": "Type of business",
+        "target_audience": ["List of target audiences"],
+        "tone": "Brand tone",
+        "objectives": ["List of objectives"],
+        "platforms": ["Mentioned social platforms"],
+        "preferred_platforms": ["Platforms specifically requested for posts"],
+        "platform_specific_details": {{
+            "instagram_handle": "Handle if mentioned",
+            "twitter_handle": "Handle if mentioned",
+            "linkedin_page": "Page if mentioned"
+        }},
+        "popular_hashtags": ["Relevant hashtags"],
+        "themes": ["Main themes"],
+        "short_length": 280,
+        "long_length": 2000,
+        "brand_keywords": ["Key brand terms"],
+        "restricted_keywords": ["Terms to avoid"],
+        "competitors": ["Main competitors"],
+        "formats": ["Content formats"]
+    }}
+    """)
+
+    parser = JsonOutputParser()
+    chain = extract_prompt | llm | parser
+    
+    try:
+        user_details = chain.invoke({"query": query})
+        # Add default values for missing fields
+        defaults = {
+            "short_length": 280,
+            "long_length": 2000,
+            "personal_preferences": "Use technical terms but keep explanations concise."
+        }
+        return {**defaults, **user_details}
+    except Exception as e:
+        print(f"Error extracting user details: {e}")
+        return default_user_details  # Fall back to default profile
+
+# Default fallback profile
+
+
+default_user_details = {
+    "user_name": "Default Brand",
+    "business_name": "Default Brand",
+    "industry": "General",
+    "business_type": "Business",
+    "target_audience": ["General Audience"],
+    "tone": "Professional",
+    "objectives": ["Awareness"],
+    "platforms": ["Twitter", "Instagram"],
+    "preferred_platforms": ["Twitter", "Instagram"],
+    "platform_specific_details": {},
+    "popular_hashtags": [],
+    "themes": [],
+    "short_length": 280,
+    "long_length": 2000,
+    "brand_keywords": [],
+    "restricted_keywords": [],
+    "competitors": [],
+    "formats": ["Text"]
+}
 
 sumamry_prompt = ChatPromptTemplate.from_template("""
 Taks: You need to give a summary of this given text. This summary will help the user to get the idea of the whole text. Do not miss anything important as this summary will take place in Research.
@@ -208,6 +261,8 @@ def summary_text(state: InputState) -> SumamryOutputState:
 
 def research_node(state: SumamryOutputState) -> ResearchOutputState:
     print("******* Researching for the best content *************")
+    # Extract user details from the input text
+    user_details = extract_user_details(state["text"])
     input_ = {"user_details": user_details, "text_summary": state["text_summary"], "platforms": state["platforms"]}
     res = model.with_structured_output(ReserachQuestions).invoke(research_agent_prompt.invoke(input_))
     # Access questions using dot notation instead of dictionary syntax
@@ -221,6 +276,7 @@ def research_node(state: SumamryOutputState) -> ResearchOutputState:
 
 def content_strategy_node(state: ResearchOutputState) -> ContentStrategyState:
     print("******* Generating Content Strategy *************")
+    user_details = extract_user_details(state["text"])
     input_ = {
         "user_details": user_details,
         "text_summary": state["text"],
@@ -479,34 +535,171 @@ def Blog(state: IntentMatchingInputState) -> FinalState:
     }
     res = model.invoke(blog_prompt.invoke(prompt_input))
     return {"contents": [res.content]}
-def combining_content(state:FinalState) -> GeneratedContent:
-    final_content = ""
-    for content in state["contents"]:
-        final_content += content + "\n\n"
-    return {"generated_content": final_content}
-def create_graph() :
+def combining_content(state: FinalState) -> GeneratedContent:
+    try:
+        # Create a dictionary to store platform-specific content
+        platform_content = {}
+        
+        # Process each content piece and organize by platform
+        for content in state.get("contents", []):
+            if not content:  # Skip empty content
+                continue
+                
+            try:
+                # Extract platform from content (assuming format "Platform Name: content...")
+                platform_match = re.match(r"(\w+)\s+Post\s+#\d+:(.*)", content, re.DOTALL)
+                if platform_match:
+                    platform = platform_match.group(1).lower()
+                    content_text = platform_match.group(2).strip()
+                    
+                    # Initialize platform list if it doesn't exist
+                    if platform not in platform_content:
+                        platform_content[platform] = []
+                    
+                    # Add content to platform list
+                    platform_content[platform].append(content_text)
+                else:
+                    print(f"Could not match platform in content: {content[:100]}...")
+            except Exception as e:
+                print(f"Error processing content piece: {str(e)}")
+                continue
+        
+        # Join multiple posts for each platform with newlines
+        final_content = {
+            platform: "\n\n".join(posts)
+            for platform, posts in platform_content.items()
+        }
+        
+        if not final_content:
+            print("Warning: No content was generated")
+            final_content = {"error": "No content was generated"}
+        
+        return {"generated_content": final_content}
+        
+    except Exception as e:
+        print(f"Error in combining_content: {str(e)}")
+        return {"generated_content": {"error": f"Error combining content: {str(e)}"}}
 
-    """ Create and return the content genration graph."""
-    builder = StateGraph(input=InputState, output=GeneratedContent)
+# Update the image prompt template
+image_prompt_template = ChatPromptTemplate.from_template("""
+You are a visual prompt expert. Create an ultra-concise prompt (5-6 words maximum) for an AI image generator.
 
-    # Nodes
-    builder.add_node("summary_node",summary_text)
+Content: {content}
+Platform: {platform}
+Context: {text}
+
+Requirements:
+1. MAXIMUM 5-6 WORDS TOTAL
+2. Focus on key visual elements only
+3. Be specific and descriptive
+4. Include style/mood if relevant
+5. Avoid abstract concepts
+
+Example good prompts:
+- "sunset beach yoga peaceful meditation"
+- "modern office desk productivity setup"
+- "happy family cooking healthy meal"
+
+BAD examples (too long/abstract):
+- "a beautiful scene showing the essence of mindfulness and peace" (too long)
+- "business success growth mindset leadership" (too abstract)
+
+Return ONLY the prompt text, nothing else. No explanations or additional text.
+""")
+
+def generate_image(state: GeneratedContent) -> ImageGenerationState:
+    print("******* Generating image prompt *************")
+    
+    # Convert the dictionary content to a string for context
+    content_text = ""
+    if isinstance(state["generated_content"], dict):
+        content_text = " ".join(state["generated_content"].values())
+    else:
+        content_text = str(state["generated_content"])
+    
+    # Limit the context length
+    content_text = content_text[:500]
+    
+    # Generate prompt using the template
+    prompt_result = model.invoke(
+        image_prompt_template.invoke({
+            "content": content_text,
+            "platform": "general",
+            "text": content_text
+        })
+    )
+    
+    # Extract and clean the prompt text
+    image_prompt = prompt_result.content.strip()
+    
+    # Ensure prompt is not too long by taking only first 5-6 words
+    words = image_prompt.split()
+    if len(words) > 6:
+        image_prompt = " ".join(words[:6])
+    
+    try:
+        # Generate image using the prompt
+        image = image_model.text_to_image(image_prompt)
+        
+        # Resize the image
+        # You can adjust these dimensions as needed
+        max_size = (512, 512)  # Width, Height
+        image.thumbnail(max_size, Image.Resampling.LANCZOS)
+        
+        # Convert PIL Image to base64 string with compression
+        buffered = io.BytesIO()
+        # Save with compression (quality=85 gives good balance between size and quality)
+        image.save(buffered, format="JPEG", quality=85, optimize=True)
+        image_base64 = base64.b64encode(buffered.getvalue()).decode()
+        
+        return {
+            "generated_content": state["generated_content"],
+            "image_prompt": image_prompt,
+            "image_base64": f"data:image/jpeg;base64,{image_base64}"
+        }
+    except Exception as e:
+        print(f"Error generating image: {e}")
+        return {
+            "generated_content": state["generated_content"],
+            "image_prompt": image_prompt,
+            "image_base64": ""
+        }
+
+# Add this class for state schema
+class GraphState(TypedDict):
+    text: str
+    platforms: list[Platform]
+    text_summary: Optional[str]
+    research: Optional[str]
+    content_strategy: Optional[dict]
+    generated_content: Optional[str]
+    image_prompt: Optional[str]
+    image_base64: Optional[str]
+
+def create_graph():
+    # Update StateGraph initialization with state_schema
+    builder = StateGraph(
+        input=InputState,
+        output=ImageGenerationState,
+        state_schema=GraphState
+    )
+    
+    # Add nodes
+    builder.add_node("summary_node", summary_text)
     builder.add_node("research_node", research_node)
+    builder.add_node("content_strategy_node", content_strategy_node)
     builder.add_node("intent_matching_node", IntentMatching)
     builder.add_node("instagram", Insta)
     builder.add_node("twitter", Twitter)
     builder.add_node("linkedin", Linkedin)
     builder.add_node("blog", Blog)
     builder.add_node("combine_content", combining_content)
-    builder.add_node("content_strategy_node", content_strategy_node)
-
-
-    # Flow
+    builder.add_node("generate_image", generate_image)
+    
+    # Add edges
     builder.add_edge(START, "summary_node")
     builder.add_edge("summary_node", "research_node")
-
-    # Update flow
-    builder.add_edge("research_node", "content_strategy_node") # Make sure content_strategy_node runs before others dependent on its output
+    builder.add_edge("research_node", "content_strategy_node")
     builder.add_edge("content_strategy_node", "intent_matching_node")
     builder.add_edge("intent_matching_node", "instagram")
     builder.add_edge("intent_matching_node", "twitter")
@@ -516,18 +709,9 @@ def create_graph() :
     builder.add_edge("twitter", "combine_content")
     builder.add_edge("instagram", "combine_content")
     builder.add_edge("linkedin", "combine_content")
-    builder.add_edge("combine_content", END)
-
+    builder.add_edge("combine_content", "generate_image")
+    builder.add_edge("generate_image", END)
+    
     return builder.compile()
 
 graph = create_graph()
-
-# res = graph.invoke({"text": """
-
-# Calvin Klein is one of the world’s leading global fashion lifestyle brands with a history of bold, non-conformist ideals that inform everything we do. Founded in New York in 1968, the brand’s minimalist and sensual aesthetic drives our approach to product design and communication, creating a canvas that offers the possibility of limitless self-expression. The Calvin Klein brands – CK Calvin Klein, Calvin Klein, Calvin Klein Jeans, Calvin Klein Underwear, and Calvin Klein Performance – are connected by the intention and purpose of elevating everyday essentials to globally iconic status. Each of the brands has a distinct identity and position in the retail landscape, providing us the opportunity to market a range of universally appealing products to domestic and international consumers with a variety of needs. Our products are underpinned by responsible design, high-quality construction, and the elimination of all unnecessary details. We strive for unique and dimensional pieces that continuously wear well and remain relevant season after season. Global retail sales of Calvin Klein products were approximately $8.5 billion in 2021.
-
-# Calvin Klein continues to solidify its position as an innovator of emerging digital platforms and modern marketing campaigns. PVH acquired Calvin Klein in 2003 and continues to oversee a focused approach to growing the brand’s worldwide relevance, presence, and long term growth.
-# Generate 4 posts for Instagram and only 2 posts for Twitter for Winter Apparels
-# """, "platforms": ["Instagram","Twitter"]})
-
-# print(res["generated_content"])
