@@ -85,7 +85,7 @@ HUGGINGFACE_TOKEN=your_huggingface_token
 
 1. Start the FastAPI backend:
 ```bash
-uvicorn api:app --reload
+fastapi run --workers 4 api.py
 ```
 
 2. Open the frontend:
